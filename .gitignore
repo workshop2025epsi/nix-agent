@@ -1,4 +1,5 @@
 __pycache__
 toSend
 *.bck
+config.json
 test_upload.py

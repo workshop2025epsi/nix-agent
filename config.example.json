@@ -1,0 +1,26 @@
+{
+  "api": {
+    "url": "http://YOUR_API_SERVER:3000/api/upload",
+    "token": "YOUR_API_TOKEN_HERE",
+    "agent_token": "YOUR_AGENT_TOKEN_HERE",
+    "timeout": 60
+  },
+  "recording": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "blocksize": 512,
+    "threshold_db": 30,
+    "silence_duration": 10,
+    "max_buffer_duration": 60,
+    "output_prefix": "recording"
+  },
+  "audio_processing": {
+    "quality": "medium",
+    "remove_silence": false,
+    "silence_threshold": -30
+  },
+  "schedule": {
+    "daily_merge_time": "23:59",
+    "to_send_folder": "toSend"
+  }
+}

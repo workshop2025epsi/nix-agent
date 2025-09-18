@@ -14,28 +14,53 @@ import collections
 import requests
 import json
 
-# Paramètres optimisés pour un enregistrement léger et de qualité
-sample_rate = 16000
-channels = 1
-blocksize = 512
-threshold_db = 30         # seuil en decibels
-silence_duration = 10     # secondes de silence avant d'arrêter l'enregistrement
-output_prefix = "recording"
-max_buffer_duration = 60  # Durée max du buffer en secondes (augmenté)
+def load_config(config_file="config.json"):
+    """Charge la configuration depuis un fichier JSON"""
+    try:
+        if not os.path.exists(config_file):
+            print(f"❌ Fichier de configuration '{config_file}' non trouvé!")
+            print("💡 Créez le fichier avec la structure requise ou utilisez config.example.json comme modèle")
+            sys.exit(1)
+        
+        with open(config_file, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        
+        print(f"✅ Configuration chargée depuis '{config_file}'")
+        return config
+    
+    except json.JSONDecodeError as e:
+        print(f"❌ Erreur de format JSON dans '{config_file}': {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Erreur lors du chargement de la configuration: {e}")
+        sys.exit(1)
 
-# Paramètres de compression audio
-audio_quality = 'medium'  # 'low', 'medium', 'high'
-remove_silence = False
-silence_threshold = -30   # Seuil de silence en dB (plus bas = plus strict)
+# Charger la configuration
+config = load_config()
 
-# Paramètres de fusion quotidienne
-daily_merge_time = "23:59"
-to_send_folder = "toSend"
+# Paramètres d'enregistrement depuis la config
+sample_rate = config['recording']['sample_rate']
+channels = config['recording']['channels']
+blocksize = config['recording']['blocksize']
+threshold_db = config['recording']['threshold_db']
+silence_duration = config['recording']['silence_duration']
+output_prefix = config['recording']['output_prefix']
+max_buffer_duration = config['recording']['max_buffer_duration']
 
-# Configuration API
-API_URL = "http://192.168.0.202:3000/api/upload"
-API_TOKEN = "dgddayhJkGiGOnLaLBPNlBaFSmgDOguQPrcIOTIrrtMBlAkuwyHonWVICtcfWxujmnst"
-AGENT_TOKEN = "hkiOn1kbri73OeJtEFiYgVoD4ntb4akaN0QeB7Aq78wN3ZLUTxpPoevxU18xZHOVrv7unOgJah2y1zuzkU1XRicmHLajDanDz8PpEBKvfCDpM9Po"
+# Paramètres de traitement audio depuis la config
+audio_quality = config['audio_processing']['quality']
+remove_silence = config['audio_processing']['remove_silence']
+silence_threshold = config['audio_processing']['silence_threshold']
+
+# Paramètres de planification depuis la config
+daily_merge_time = config['schedule']['daily_merge_time']
+to_send_folder = config['schedule']['to_send_folder']
+
+# Configuration API depuis la config
+API_URL = config['api']['url']
+API_TOKEN = config['api']['token']
+AGENT_TOKEN = config['api']['agent_token']
+API_TIMEOUT = config['api'].get('timeout', 60)
 
 # Variables globales pour l'enregistrement continu
 audio_queue = queue.Queue(maxsize=1000)  # Queue plus grande pour éviter les pertes
@@ -224,7 +249,7 @@ def upload_to_api(file_path):
             }
             
             # Faire la requête
-            response = requests.post(API_URL, headers=headers, files=files, data=data, timeout=60)
+            response = requests.post(API_URL, headers=headers, files=files, data=data, timeout=API_TIMEOUT)
             
             if response.status_code == 200:
                 response_json = response.json()
@@ -306,7 +331,6 @@ def merge_audio_files():
                 print(f"Fichier fusionne et uploade avec succes!")
             else:
                 print(f"Fusion reussie mais erreur d'upload - le fichier reste disponible dans '{to_send_folder}'")
-        
         # Supprimer les fichiers individuels après fusion réussie
         for file_path in wav_files:
             try:
@@ -492,6 +516,8 @@ def main():
     print(f"   - Qualité: {audio_quality}")
     print(f"   - Suppression silences: {'✓' if remove_silence else '✗'}")
     print(f"   - Format de sortie: WAV")
+    print(f"   - API URL: {API_URL}")
+    print(f"   - Timeout API: {API_TIMEOUT}s")
     
     create_to_send_folder()
     merge_thread = schedule_daily_merge()
