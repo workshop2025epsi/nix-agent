@@ -11,6 +11,8 @@ import glob
 from pathlib import Path
 import queue
 import collections
+import requests
+import json
 
 # Paramètres optimisés pour un enregistrement léger et de qualité
 sample_rate = 16000
@@ -29,6 +31,11 @@ silence_threshold = -30   # Seuil de silence en dB (plus bas = plus strict)
 # Paramètres de fusion quotidienne
 daily_merge_time = "23:59"
 to_send_folder = "toSend"
+
+# Configuration API
+API_URL = "http://192.168.0.202:3000/api/upload"
+API_TOKEN = "dgddayhJkGiGOnLaLBPNlBaFSmgDOguQPrcIOTIrrtMBlAkuwyHonWVICtcfWxujmnst"
+AGENT_TOKEN = "hkiOn1kbri73OeJtEFiYgVoD4ntb4akaN0QeB7Aq78wN3ZLUTxpPoevxU18xZHOVrv7unOgJah2y1zuzkU1XRicmHLajDanDz8PpEBKvfCDpM9Po"
 
 # Variables globales pour l'enregistrement continu
 audio_queue = queue.Queue(maxsize=1000)  # Queue plus grande pour éviter les pertes
@@ -173,6 +180,81 @@ def create_to_send_folder():
         os.makedirs(to_send_folder)
         print(f"📁 Dossier '{to_send_folder}' créé")
 
+def save_response_data(response_data, merged_file_path):
+    """Sauvegarde les données de réponse API dans un fichier JSON"""
+    try:
+        # Créer le nom du fichier JSON basé sur le fichier audio
+        base_name = os.path.splitext(merged_file_path)[0]
+        json_file_path = f"{base_name}_response.json"
+        
+        # Sauvegarder les données
+        with open(json_file_path, 'w', encoding='utf-8') as f:
+            json.dump(response_data, f, indent=2, ensure_ascii=False)
+        
+        print(f"Reponse API sauvegardee: {os.path.basename(json_file_path)}")
+        return json_file_path
+        
+    except Exception as e:
+        print(f"Erreur sauvegarde reponse JSON: {e}")
+        return None
+
+def upload_to_api(file_path):
+    """Upload du fichier audio vers l'API"""
+    if not os.path.exists(file_path):
+        print(f"Fichier non trouve: {file_path}")
+        return False
+    
+    print(f"Upload en cours vers l'API...")
+    print(f"   Fichier: {os.path.basename(file_path)}")
+    print(f"   Taille: {format_size(os.path.getsize(file_path))}")
+    
+    try:
+        # Préparer les headers
+        headers = {
+            'Authorization': f'Bearer {API_TOKEN}'
+        }
+        
+        # Préparer les données multipart
+        with open(file_path, 'rb') as audio_file:
+            files = {
+                'file': (os.path.basename(file_path), audio_file, 'audio/wav')
+            }
+            data = {
+                'agent token': AGENT_TOKEN
+            }
+            
+            # Faire la requête
+            response = requests.post(API_URL, headers=headers, files=files, data=data, timeout=60)
+            
+            if response.status_code == 200:
+                response_json = response.json()
+                
+                # Vérifier si c'est une réponse de succès
+                if response_json.get('success') and response_json.get('message') == "Fichier uploadé avec succès":
+                    print(f"Upload reussi!")
+                    print(f"   ID: {response_json.get('data', {}).get('id')}")
+                    print(f"   Token: {response_json.get('data', {}).get('fileToken')}")
+                    
+                    # Sauvegarder la réponse
+                    save_response_data(response_json, file_path)
+                    return True
+                else:
+                    print(f"Reponse inattendue: {response_json}")
+                    return False
+            else:
+                print(f"Erreur HTTP {response.status_code}: {response.text}")
+                return False
+                
+    except requests.exceptions.Timeout:
+        print(f"Timeout - L'upload a pris trop de temps")
+        return False
+    except requests.exceptions.ConnectionError:
+        print(f"Erreur de connexion - Verifiez votre reseau et l'URL de l'API")
+        return False
+    except Exception as e:
+        print(f"Erreur upload: {e}")
+        return False
+
 def merge_audio_files():
     """Fusionne tous les fichiers audio WAV en un seul fichier quotidien optimisé"""
     # Chercher uniquement les fichiers WAV
@@ -215,6 +297,15 @@ def merge_audio_files():
             print(f"   Fichier: {final_path}")
             print(f"   Durée totale: {format_duration(total_duration)}")
             print(f"   Taille: {format_size(merged_size)}")
+            
+            # Upload automatique vers l'API
+            print(f"\nDebut de l'upload vers l'API...")
+            upload_success = upload_to_api(final_path)
+            
+            if upload_success:
+                print(f"Fichier fusionne et uploade avec succes!")
+            else:
+                print(f"Fusion reussie mais erreur d'upload - le fichier reste disponible dans '{to_send_folder}'")
         
         # Supprimer les fichiers individuels après fusion réussie
         for file_path in wav_files:
@@ -224,10 +315,10 @@ def merge_audio_files():
             except Exception as e:
                 print(f"   ❌ Erreur suppression {file_path}: {e}")
         
-        print(f"🎯 Fichier fusionné optimisé déplacé vers '{to_send_folder}'")
+        print(f"Processus de fusion et upload termine")
         
     except Exception as e:
-        print(f"❌ Erreur lors de la fusion: {e}")
+        print(f"Erreur lors de la fusion: {e}")
 
 def audio_callback(indata, frames, time, status):
     """Callback pour l'enregistrement audio continu - exécuté en temps réel"""
