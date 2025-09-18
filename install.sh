@@ -7,8 +7,6 @@ cd ~
 mkdir -p project
 cd project
 
-git clone https://github.com/workshop2025epsi/nix-agent.git .
-
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
